@@ -1,7 +1,82 @@
 # GU5243 Project02
-### Collaborators：Haowen Cui(@HowardCui),
+### Collaborators：Haowen Cui(@HowardCui), Yaxuan Hu(@yh3881-cloud)
 ## Project Introduction 
 (project intro ....)
+
+## Data Upload
+
+This section allows users to either load a built-in sample dataset or upload their own file for future steps.
+
+### Supported Data Sources
+The app provides two ways to load data:
+
+1. **Sample datasets**
+   - Useful for testing the app quickly without preparing your own file.
+   - Included sample datasets:
+     - `penguins` (`.csv`)
+     - `cars` (`.json`)
+     - `College` (`.rds`)
+
+2. **User-uploaded datasets**
+   - Users can upload a local dataset file directly through the interface.
+   - Supported file formats:
+     - `.csv`
+     - `.xlsx`
+     - `.json`
+     - `.rds`
+
+### How to Use
+
+#### Option 1: Load a Sample Dataset
+1. Open the **Data Upload** tab.
+2. Under **Choose source**, select **Sample dataset**.
+3. Choose one dataset from the dropdown list.
+4. The app will automatically load the selected dataset and display:
+   - load status
+   - number of rows and columns
+   - data preview
+   - column information
+   - dataset structure summary
+
+#### Option 2: Upload Your Own Dataset
+1. Open the **Data Upload** tab.
+2. Under **Choose source**, select **Upload file**.
+3. Click the file upload button and choose a dataset from your computer.
+4. After upload, the app will automatically read the file and display:
+   - upload status
+   - file name
+   - number of rows and columns
+   - preview of the first 10 rows
+   - column types
+   - missing-value and uniqueness summary
+
+### Validation and Error Handling
+
+The application checks the uploaded file format before loading the data.
+
+- Accepted extensions: `.csv`, `.xlsx`, `.json`, `.rds`
+- If the uploaded file format is not supported, the app returns an error message.
+- If file reading fails, the app shows an upload failure message instead of crashing.
+
+### Output Panels in the Data Upload Tab
+
+Once a dataset is loaded, the app provides several panels to help users understand the data:
+
+- **Status**  
+  Shows whether loading was successful and reports the dataset name and dimensions.
+
+- **Summary**  
+  Displays the total number of rows and columns.
+
+- **Preview**  
+  Shows the first several rows of the dataset in an interactive table.
+
+- **Columns**  
+  Lists each column name and its data type.
+
+- **Structure**  
+  Summarizes missing values and the number of unique values for each column.
+
 
 ## Exploratory Data Analysis (EDA)
 
