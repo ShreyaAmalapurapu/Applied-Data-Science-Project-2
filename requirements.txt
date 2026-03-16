@@ -1,0 +1,5 @@
+shiny
+seaborn
+pandas
+openpyxl
+pyreadr
