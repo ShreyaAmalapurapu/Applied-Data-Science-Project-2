@@ -4,9 +4,10 @@ import pandas as pd
 import pyreadr
 from shiny import reactive
 from shiny.express import input, render, ui
-
+import matplotlib.pyplot as plt
 
 app_dir = Path(__file__).resolve().parent
+app_dir = app_dir / "sampledatasets"
 
 current_df = reactive.value(pd.DataFrame())
 data_source_info = reactive.value({
@@ -356,6 +357,311 @@ with ui.navset_tab():
                                     "Missing": [int(df[col].isna().sum()) for col in df.columns],
                                     "Unique": [int(df[col].nunique(dropna=True)) for col in df.columns]
                                 })
+    # page for EDA
+    with ui.nav_panel("Exploratory Data Analysis"):
+
+        # Block 1: Dataset Summary
+        with ui.card(class_="content-card"):
+            ui.div("Dataset Summary", class_="status-title")
+
+
+            @render.table
+            def dataset_summary_table():
+                df=current_df.get()
+
+                if df.empty:
+                    return pd.DataFrame({
+                        "Metric": ["Message"],
+                        "Value": ["No data loaded"]
+                    })
+
+                n_rows, n_cols=df.shape
+                missing_cells=int(df.isna().sum().sum())
+                duplicate_rows=int(df.duplicated().sum())
+                numeric_cols=int(df.select_dtypes(include="number").shape[1])
+                categorical_cols=int(df.select_dtypes(exclude="number").shape[1])
+
+                return pd.DataFrame([
+                    ("Rows", n_rows),
+                    ("Columns", n_cols),
+                    ("Missing Cells", missing_cells),
+                    ("Duplicate Rows", duplicate_rows),
+                    ("Numeric Columns", numeric_cols),
+                    ("Categorical Columns", categorical_cols),
+                ], columns=["Metric", "Value"])
+        ui.br()
+
+        # Block 2: Plot Controls
+        with ui.card(class_="content-card"):
+            ui.div("Visualization Controls", class_="status-title")
+
+            with ui.layout_columns(col_widths=(4, 4, 4)):
+                ui.input_select(
+                    "plot_type",
+                    "Choose plot type",
+                    choices={
+                        "scatter": "Scatter Plot",
+                        "hist": "Histogram",
+                        "box": "Box Plot",
+                        "bar": "Bar Chart"
+                    },
+                    selected="scatter"
+                )
+
+
+                @render.ui
+                def x_var_ui():
+                    df=current_df.get()
+
+                    if df.empty:
+                        return ui.input_select(
+                            "x_var",
+                            "X variable",
+                            choices={"": "No data loaded"},
+                            selected=""
+                        )
+
+                    plot_type=input.plot_type()
+
+                    if plot_type in ["scatter", "hist", "box"]:
+                        cols=df.select_dtypes(include="number").columns.tolist()
+                    else:
+                        cols=df.columns.tolist()
+
+                    if not cols:
+                        return ui.input_select(
+                            "x_var",
+                            "X variable",
+                            choices={"": "No valid columns"},
+                            selected=""
+                        )
+
+                    return ui.input_select(
+                        "x_var",
+                        "X variable",
+                        choices={col: col for col in cols},
+                        selected=cols[0]
+                    )
+
+
+                @render.ui
+                def y_var_ui():
+                    df=current_df.get()
+
+                    if df.empty:
+                        return ui.input_select(
+                            "y_var",
+                            "Y variable",
+                            choices={"": "No data loaded"},
+                            selected=""
+                        )
+
+                    plot_type=input.plot_type()
+
+                    if plot_type!="scatter":
+                        return ui.div("Y variable is only needed for Scatter Plot.")
+
+                    cols=df.select_dtypes(include="number").columns.tolist()
+
+                    if len(cols) < 2:
+                        return ui.input_select(
+                            "y_var",
+                            "Y variable",
+                            choices={"": "Need at least 2 numeric columns"},
+                            selected=""
+                        )
+
+                    return ui.input_select(
+                        "y_var",
+                        "Y variable",
+                        choices={col: col for col in cols},
+                        selected=cols[1]
+                    )
+        ui.br()
+
+        # Block 3: Plot Output
+        with ui.card(class_="content-card"):
+            ui.div("Plot Output", class_="status-title")
+
+
+            @render.plot
+            def eda_plot():
+                df=current_df.get()
+                fig, ax=plt.subplots(figsize=(8, 5))
+
+                if df.empty:
+                    ax.text(0.5, 0.5, "No data loaded", ha="center", va="center")
+                    ax.axis("off")
+                    return fig
+
+                plot_type=input.plot_type()
+                x_var=input.x_var()
+
+                try:
+                    if plot_type=="scatter":
+                        y_var=input.y_var()
+
+                        if x_var not in df.columns or y_var not in df.columns:
+                            ax.text(0.5, 0.5, "Please select valid X and Y variables.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        plot_df=df[[x_var, y_var]].dropna()
+
+                        if plot_df.empty:
+                            ax.text(0.5, 0.5, "No valid data to plot.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        ax.scatter(plot_df[x_var], plot_df[y_var])
+                        ax.set_xlabel(x_var)
+                        ax.set_ylabel(y_var)
+                        ax.set_title(f"{y_var} vs {x_var}")
+
+                    elif plot_type=="hist":
+                        if x_var not in df.columns:
+                            ax.text(0.5, 0.5, "Please select a valid variable.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        series=df[x_var].dropna()
+
+                        if series.empty:
+                            ax.text(0.5, 0.5, "No valid data to plot.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        ax.hist(series, bins=20)
+                        ax.set_xlabel(x_var)
+                        ax.set_title(f"Histogram of {x_var}")
+
+                    elif plot_type=="box":
+                        if x_var not in df.columns:
+                            ax.text(0.5, 0.5, "Please select a valid variable.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        series=df[x_var].dropna()
+
+                        if series.empty:
+                            ax.text(0.5, 0.5, "No valid data to plot.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        ax.boxplot(series)
+                        ax.set_title(f"Box Plot of {x_var}")
+                        ax.set_xticklabels([x_var])
+
+                    elif plot_type=="bar":
+                        if x_var not in df.columns:
+                            ax.text(0.5, 0.5, "Please select a valid variable.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        counts=df[x_var].astype(str).value_counts(dropna=False).head(10)
+
+                        if counts.empty:
+                            ax.text(0.5, 0.5, "No valid data to plot.", ha="center", va="center")
+                            ax.axis("off")
+                            return fig
+
+                        ax.bar(counts.index, counts.values)
+                        ax.set_title(f"Bar Chart of {x_var}")
+                        ax.tick_params(axis="x", rotation=45)
+
+                except Exception as e:
+                    ax.clear()
+                    ax.text(0.5, 0.5, f"Plot error: {e}", ha="center", va="center")
+                    ax.axis("off")
+
+                return fig
+        ui.br()
+
+        # Block 4: Correlation Controls
+        with ui.card(class_="content-card"):
+            ui.div("Correlation Analysis", class_="status-title")
+
+
+            @render.ui
+            def corr_vars_ui():
+                df=current_df.get()
+
+                if df.empty:
+                    return ui.div("No data loaded")
+
+                numeric_cols=df.select_dtypes(include="number").columns.tolist()
+
+                if len(numeric_cols) < 2:
+                    return ui.div("Need at least 2 numeric columns for correlation analysis")
+
+                return ui.input_selectize(
+                    "corr_vars",
+                    "Select numeric variables",
+                    choices=numeric_cols,
+                    selected=numeric_cols[:4],
+                    multiple=True
+                )
+        ui.br()
+
+        # Block 5: Correlation Output
+        with ui.card(class_="content-card"):
+            ui.div("Correlation Heatmap", class_="status-title")
+
+
+            @render.plot
+            def correlation_heatmap():
+                df=current_df.get()
+                fig, ax=plt.subplots(figsize=(8, 6))
+
+                if df.empty:
+                    ax.text(0.5, 0.5, "No data loaded", ha="center", va="center")
+                    ax.axis("off")
+                    return fig
+
+                numeric_df=df.select_dtypes(include="number")
+
+                if numeric_df.empty:
+                    ax.text(0.5, 0.5, "No numeric columns available", ha="center", va="center")
+                    ax.axis("off")
+                    return fig
+
+                selected_vars=input.corr_vars()
+
+                if not selected_vars or len(selected_vars) < 2:
+                    ax.text(0.5, 0.5, "Please select at least 2 numeric variables.", ha="center", va="center")
+                    ax.axis("off")
+                    return fig
+
+                corr_df=numeric_df[list(selected_vars)].dropna()
+
+                if corr_df.empty:
+                    ax.text(0.5, 0.5, "No valid data for correlation.", ha="center", va="center")
+                    ax.axis("off")
+                    return fig
+
+                corr_matrix=corr_df.corr()
+
+                im=ax.imshow(corr_matrix, aspect="auto")
+
+                ax.set_xticks(range(len(corr_matrix.columns)))
+                ax.set_yticks(range(len(corr_matrix.columns)))
+
+                ax.set_xticklabels(corr_matrix.columns, rotation=45, ha="right")
+                ax.set_yticklabels(corr_matrix.columns)
+
+                ax.set_title("Correlation Heatmap")
+
+                # correlation value
+                for i in range(len(corr_matrix)):
+                    for j in range(len(corr_matrix)):
+                        ax.text(j, i, f"{corr_matrix.iloc[i, j]:.2f}",
+                                ha="center", va="center")
+
+                fig.colorbar(im, ax=ax)
+
+                return fig
+        ui.br()
+
 @reactive.effect
 @reactive.event(input.data_source, input.sample_dataset)
 def _load_sample():
