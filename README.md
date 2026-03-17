@@ -1,5 +1,5 @@
 # GU5243 Project02
-### Collaborators：Haowen Cui(@HowardCui), Yaxuan Hu(@yh3881-cloud)
+### Collaborators：Haowen Cui(@HowardCui), Yaxuan Hu(@yh3881-cloud), Pablo Rocha Gomez (@prochag), Shreya Amalapurapu
 ## Project Introduction 
 (project intro ....)
 
