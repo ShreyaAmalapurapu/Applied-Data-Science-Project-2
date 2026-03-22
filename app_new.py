@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import numpy as np 
 import pandas as pd
 import pyreadr
 from shiny import reactive
@@ -18,6 +19,11 @@ data_source_info = reactive.value({
 })
 
 # ui info
+
+#tracks the result of the last feature engineering action so the UI can show a success/error message directly below the Apply button.
+fe_status = reactive.value({"status": "idle", "message": ""})
+dropdown_choices = reactive.value({"numeric": [], "all": []})
+engineered_columns = reactive.value([])
 
 ui.tags.style("""
 :root{
@@ -391,6 +397,57 @@ with ui.navset_tab():
                 ], columns=["Metric", "Value"])
         ui.br()
 
+        # Block 1a: Feature Engineering
+        with ui.card(class_="content-card"):
+            ui.div("Feature Engineering", class_="status-title")
+
+            with ui.layout_columns(col_widths=(4,4,4)):
+                ui.input_select("fe_column", "Select column", choices={})
+                ui.input_select(
+                    "fe_transformation",
+                    "Transformation",
+                    choices={
+                        "log": "Log Transform",
+                        "square":"Square",
+                        "bin":"Binning"}
+                )
+                ui.input_slider(
+                    "fe_bins",
+                    "Bins for binning",
+                    min=2, max=10, value=3
+                )
+            ui.input_action_button("apply_fe", "Apply")
+
+            @render.ui
+            def fe_status_ui():
+                info = fe_status.get()
+                if info["status"] == "idle" or not info["message"]:
+                    return ui.div()
+                cls = "status-box status-success" if info["status"] == "success" else "status-box status-error"
+                return ui.div(info["message"], class_=cls, style="margin-top: 10px;")
+            
+            @render.ui
+            def engineered_columns_ui():
+                cols = engineered_columns.get()
+                if not cols:
+                    return ui.div()  # show nothing until at least one transformation has been applied
+ 
+                # Build an HTML table row for each engineered column entry
+                rows = "".join(
+                    f"<tr><td>{c['name']}</td><td>{c['derived_from']}</td><td>{c['transformation']}</td></tr>"
+                    for c in cols
+                )
+                html = f"""
+                <div style="margin-top:16px;">
+                  <div class="section-label">Engineered Variables</div>
+                  <table class="table table-sm table-bordered" style="margin-top:8px;">
+                    <thead><tr><th>New Column</th><th>Derived From</th><th>Transformation</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                  </table>
+                </div>
+                """
+                return ui.HTML(html)
+
         # Block 2: Plot Controls
         with ui.card(class_="content-card"):
             ui.div("Visualization Controls", class_="status-title")
@@ -407,76 +464,33 @@ with ui.navset_tab():
                     },
                     selected="scatter"
                 )
-
-
                 @render.ui
                 def x_var_ui():
-                    df=current_df.get()
-
-                    if df.empty:
-                        return ui.input_select(
-                            "x_var",
-                            "X variable",
-                            choices={"": "No data loaded"},
-                            selected=""
-                        )
-
-                    plot_type=input.plot_type()
-
-                    if plot_type in ["scatter", "hist", "box"]:
-                        cols=df.select_dtypes(include="number").columns.tolist()
-                    else:
-                        cols=df.columns.tolist()
-
+                    choices = dropdown_choices.get()
+                    plot_type = input.plot_type()
+                    cols = choices["all"] if plot_type == "bar" else choices["numeric"]
                     if not cols:
-                        return ui.input_select(
-                            "x_var",
-                            "X variable",
-                            choices={"": "No valid columns"},
-                            selected=""
-                        )
-
-                    return ui.input_select(
-                        "x_var",
-                        "X variable",
-                        choices={col: col for col in cols},
-                        selected=cols[0]
-                    )
-
-
+                        return ui.input_select("x_var", "X variable", choices={"": "No data loaded"}, selected="")
+                    try:
+                        current_x = input.x_var()
+                        selected_x = current_x if current_x in cols else cols[0]
+                    except:
+                        selected_x = cols[0]
+                    return ui.input_select("x_var", "X variable", choices={c: c for c in cols}, selected=selected_x)
+ 
                 @render.ui
                 def y_var_ui():
-                    df=current_df.get()
-
-                    if df.empty:
-                        return ui.input_select(
-                            "y_var",
-                            "Y variable",
-                            choices={"": "No data loaded"},
-                            selected=""
-                        )
-
-                    plot_type=input.plot_type()
-
-                    if plot_type!="scatter":
-                        return ui.div("Y variable is only needed for Scatter Plot.")
-
-                    cols=df.select_dtypes(include="number").columns.tolist()
-
-                    if len(cols) < 2:
-                        return ui.input_select(
-                            "y_var",
-                            "Y variable",
-                            choices={"": "Need at least 2 numeric columns"},
-                            selected=""
-                        )
-
-                    return ui.input_select(
-                        "y_var",
-                        "Y variable",
-                        choices={col: col for col in cols},
-                        selected=cols[1]
-                    )
+                    choices = dropdown_choices.get()
+                    cols = choices["numeric"]
+                    if not cols:
+                        return ui.input_select("y_var", "Y variable", choices={"": "No data loaded"}, selected="")
+                    try:
+                        current_y = input.y_var()
+                        selected_y = current_y if current_y in cols else cols[0]
+                    except:
+                        selected_y = cols[0]
+                    return ui.input_select("y_var", "Y variable", choices={c: c for c in cols}, selected=selected_y)
+ 
         ui.br()
 
         # Block 3: Plot Output
@@ -682,6 +696,9 @@ def _load_sample():
     try:
         df = load_sample_dataset(selected_dataset)
         current_df.set(df)
+        #reset FE status so a stale message from a prior dataset doesn't persist
+        fe_status.set({"status": "idle", "message": ""})
+        engineered_columns.set([])
         data_source_info.set({
             "source_type": "sample",
             "source_name": selected_dataset,
@@ -718,6 +735,8 @@ def _load_upload():
     try:
         df = read_uploaded_file(fileinfo)
         current_df.set(df)
+        fe_status.set({"status": "idle", "message": ""})
+        engineered_columns.set([])
         data_source_info.set({
             "source_type": "upload",
             "source_name": fileinfo["name"],
@@ -733,8 +752,69 @@ def _load_upload():
             "message": f"Upload failed: {e}"
         })
 
-# -----------------------------------------Data preprocessing_Page2-----------------------------------------
+# feature engineering reactive
+@reactive.effect
+@reactive.event(input.apply_fe)
+def apply_feature_engineering():
 
+    df = current_df.get()
+    if df.empty:
+        return
+    col = input.fe_column()
+    if col not in df.columns:
+        return
+    new_df = df.copy()
+    try:
+        transformation = input.fe_transformation()
+        if transformation == "log":
+            new_col = f"log_{col}"
+            new_df[new_col] = np.log(new_df[col] + 1)
+        elif transformation == "square":
+            new_col = f"sq_{col}"
+            new_df[new_col] = new_df[col] ** 2
+        elif transformation == "bin":
+            new_col = f"bin_{col}"
+            new_df[new_col] = pd.cut(
+                new_df[col],
+                bins=input.fe_bins(),
+                labels=False).astype(float)
+        # important
+        current_df.set(new_df)
+        #message showing transformation succesful and new variable available
+        transformation_label = {
+            "log": "Log transform",
+            "square": "Square",
+            "bin": "Binning"
+        }.get(transformation, transformation)
+        fe_status.set({
+            "status": "success",
+            "message": f"✓ {transformation_label} applied — new variable '{new_col}' is now available in the Visualization Controls."
+        })
+        existing = engineered_columns.get()
+        # avoiding duplicate entries
+        already_exists = any(e["name"] == new_col for e in existing)
+        if not already_exists:
+            engineered_columns.set(existing + [{
+                "name": new_col,
+                "derived_from": col,
+                "transformation": transformation_label
+            }])
+
+    except Exception as e:
+        fe_status.set({"status": "error", "message": f"Error applying transformation: {e}. Please choose a different column or transformation."})
+        print("Feature engineering error:", e)
+
+# update ALL column dropdowns whenever df changes
+#push updated choices into x_var and y_var here, every time current_df changes.
+@reactive.effect
+def update_fe_columns():
+    df = current_df.get()
+    if not df.empty:
+        numeric = df.select_dtypes(include="number").columns.tolist()
+        all_cols = df.columns.tolist()
+        ui.update_select("fe_column", choices={c: c for c in numeric})
+        dropdown_choices.set({"numeric": numeric, "all": all_cols})
+    
+# -----------------------------------------Data preprocessing_Page2-----------------------------------------
     with ui.nav_panel("Page 2"):
         ui.markdown("This is page 2.")
-
