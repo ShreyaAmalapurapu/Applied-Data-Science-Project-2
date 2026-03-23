@@ -206,6 +206,23 @@ body {
 .bslib-gap-spacing {
   gap: 28px !important;
 }
+              .summary-table {
+  width: 340px;
+  border-collapse: collapse;
+  font-size: 19px;
+}
+.summary-table th {
+  font-size: 21px !important;
+  font-weight: 800 !important;
+  text-align: left !important;
+  padding: 6px 16px 6px 4px;
+  border-bottom: 2px solid #CBD5E1;
+}
+.summary-table td {
+  text-align: left !important;
+  padding: 5px 16px 5px 4px;
+  border-bottom: 1px solid #E2EAF0;
+}
 """)
 
 with ui.div(class_="product-bar"):
@@ -371,15 +388,12 @@ with ui.navset_tab():
             ui.div("Dataset Summary", class_="status-title")
 
 
-            @render.table
+            @render.ui
             def dataset_summary_table():
                 df=current_df.get()
 
                 if df.empty:
-                    return pd.DataFrame({
-                        "Metric": ["Message"],
-                        "Value": ["No data loaded"]
-                    })
+                    return ui.div("No data loaded", class_="status-box status-idle")
 
                 n_rows, n_cols=df.shape
                 missing_cells=int(df.isna().sum().sum())
@@ -387,14 +401,32 @@ with ui.navset_tab():
                 numeric_cols=int(df.select_dtypes(include="number").shape[1])
                 categorical_cols=int(df.select_dtypes(exclude="number").shape[1])
 
-                return pd.DataFrame([
-                    ("Rows", n_rows),
-                    ("Columns", n_cols),
-                    ("Missing Cells", missing_cells),
+                rows_data = [
+                    ("Rows", n_rows), 
+                    ("Columns", n_cols), 
+                    ("Missing Cells", missing_cells), 
                     ("Duplicate Rows", duplicate_rows),
-                    ("Numeric Columns", numeric_cols),
+                    ("Numeric Columns", numeric_cols), 
                     ("Categorical Columns", categorical_cols),
-                ], columns=["Metric", "Value"])
+                ]
+
+                #table rows as html string
+                table_rows = "".join(
+                    f"<tr><td>{metric}</td><td>{value}</td></tr>"
+                    for metric, value in rows_data
+                )
+ 
+                html = f"""
+                <table class="summary-table">
+                  <thead>
+                    <tr><th>Metric</th><th>Value</th></tr>
+                  </thead>
+                  <tbody>
+                    {table_rows}
+                  </tbody>
+                </table>
+                """
+                return ui.HTML(html)
         ui.br()
 
         # Block 1a: Feature Engineering
@@ -409,7 +441,9 @@ with ui.navset_tab():
                     choices={
                         "log": "Log Transform",
                         "square":"Square",
-                        "bin":"Binning"}
+                        "bin":"Binning", 
+                        "standardize": "Standardize (Z-score)", 
+                        "scale": "Scale (Min-Max)"}
                 )
                 ui.input_slider(
                     "fe_bins",
@@ -778,13 +812,29 @@ def apply_feature_engineering():
                 new_df[col],
                 bins=input.fe_bins(),
                 labels=False).astype(float)
-        # important
+        elif transformation == "standardize":
+            new_col = f"std_{col}"
+            col_std = new_df[col].std()
+            if col_std == 0:
+                raise ValueError("Column has zero variance: standardization not possible.")
+            new_df[new_col] = (new_df[col] - new_df[col].mean()) / col_std
+        elif transformation == "scale":
+            new_col = f"scaled_{col}"
+            col_min = new_df[col].min()
+            col_max = new_df[col].max()
+            if col_min == col_max: 
+                raise ValueError("Column is constant: min-max scaling not possible.")
+            new_df[new_col] = (new_df[col] - col_min) / (col_max - col_min)
+
+        # important: updated df
         current_df.set(new_df)
         #message showing transformation succesful and new variable available
         transformation_label = {
             "log": "Log transform",
             "square": "Square",
-            "bin": "Binning"
+            "bin": "Binning",
+            "standardize": "Standardize (Z-score)",
+            "scale": "Scale (Min-Max)"
         }.get(transformation, transformation)
         fe_status.set({
             "status": "success",
