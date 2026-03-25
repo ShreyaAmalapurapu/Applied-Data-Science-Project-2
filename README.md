@@ -2,9 +2,9 @@
 ### Collaborators：Haowen Cui(@HowardCui), Yaxuan Hu(@yh3881-cloud), Pablo Rocha Gomez (@prochag), Shreya Amalapurapu
 ## code running instruction
 1. clone the project
-2. install shiny *pip install shiny*
-3. create shiny template *shiny create* (choose “Navigating multiple pages/panels” template)
-4. test website *shiny run app.py* (run in terminal)
+2. install shiny --*pip install shiny*
+3. create shiny template --*shiny create* (choose “Navigating multiple pages/panels” template)
+4. test website --*shiny run app.py* (run in terminal)
 5. deploy (according to the instruction from https://shiny.posit.co/py/get-started/deploy-cloud.html)
 
 ## Data Upload
